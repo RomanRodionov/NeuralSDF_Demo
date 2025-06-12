@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from torch.utils.data import Dataset
 import trimesh
-from mesh_to_sdf import sample_sdf_near_surface
+from mesh_to_sdf import sample_sdf_near_surface, mesh_to_sdf
 import os
 
 class SDF_Dataset(Dataset):
@@ -33,7 +33,7 @@ class SDF_Dataset(Dataset):
             'dist': self.distances[index]
         }
     
-    def generate_points(self, path, n, normalize=True):
+    def generate_points(self, path, n, normalize=True, uniform_ratio=0.0):
         # normalize=True => map points to [-1, 1]
         mesh = trimesh.load(path)
 
@@ -44,12 +44,21 @@ class SDF_Dataset(Dataset):
             scale = 2.0 / mesh.extents.max()
             mesh.apply_scale(scale)
 
-        points, sdf = sample_sdf_near_surface(mesh, number_of_points=n)
-        sdf = sdf.astype(np.float32)[:, np.newaxis]
+        n_uniform = int(n * uniform_ratio)
+        n_surface = n - n_uniform
+
+        surface_points, surface_sdf = sample_sdf_near_surface(
+            mesh, number_of_points=n_surface)
+
+        uniform_points = np.random.uniform(-1, 1, size=(n_uniform, 3)).astype(np.float32)
+        uniform_sdf = mesh_to_sdf(mesh, uniform_points).astype(np.float32)
+
+        all_points = np.concatenate([surface_points, uniform_points], axis=0)
+        all_sdf = np.concatenate([surface_sdf, uniform_sdf], axis=0)[:, np.newaxis]
 
         return {
-            'points': points.astype(np.float32),
-            'distances': sdf.astype(np.float32)
+            'points': all_points.astype(np.float32),
+            'distances': all_sdf.astype(np.float32)
         }
     
     def n_batches(self):

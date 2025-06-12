@@ -15,6 +15,8 @@ def train(config_path):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    print("Building dataset...")
+
     dataset = SDF_Dataset(
         dataset_size=config["dataset_size"],
         batch_size=config["batch_size"],
@@ -62,6 +64,28 @@ def train(config_path):
     save_model(model, save_path)
     print(f"Model saved to {save_path}")
 
+def extract_mesh(config_path):
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    model = Siren(
+        in_features=3,
+        hidden_features=config["hidden_features"],
+        hidden_layers=config["hidden_layers"],
+        out_features=1,
+        outermost_linear=True,
+        first_omega_0=config.get("first_omega_0", 30),
+        hidden_omega_0=config.get("hidden_omega_0", 30)
+    ).to(device)
+
+    model.load_state_dict(torch.load("checkpoints/siren_weights.pth"))
+    model.cuda().eval()
+
+    mesh = reconstruct_sdf(model, resolution=128)
+    mesh.export("reconstructed.obj")
+
 if __name__ == "__main__":
     if not os.path.exists("checkpoints"):
         os.makedirs("checkpoints")
@@ -76,4 +100,7 @@ if __name__ == "__main__":
     train(args.config)
     """
 
-    train("python/config.json")
+    CONFIG_PATH = "python/config.json"
+
+    train(CONFIG_PATH)
+    extract_mesh(CONFIG_PATH)

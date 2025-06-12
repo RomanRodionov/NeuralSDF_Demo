@@ -1,0 +1,14 @@
+{
+    "dataset_size": 5000000,
+    "batch_size": 40000,
+    "model_path": "models/armadillo/armadillo.obj",
+    "checkpoint": "checkpoints/sdf_data.npy",
+    "normalize": true,
+    "hidden_features": 256,
+    "hidden_layers": 5,
+    "learning_rate": 0.0001,
+    "epochs": 100,
+    "first_omega_0": 30,
+    "hidden_omega_0": 30,
+    "save_path": "checkpoints/siren_weights.pth"
+}

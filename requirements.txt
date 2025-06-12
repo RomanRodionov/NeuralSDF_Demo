@@ -3,7 +3,6 @@ numpy
 tqdm
 embreex
 trimesh
-gdown
 scipy
 mesh-to-sdf
 matplotlib

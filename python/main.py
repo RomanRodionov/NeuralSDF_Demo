@@ -82,6 +82,7 @@ def train(config_path):
 
     save_path = config.get("save_path", "checkpoints/siren_weights.pth")
     save_model(model, save_path)
+    model.save_raw(config.get("raw_weights_path", "checkpoints/raw_weights.bin"))
     print(f"Model saved to {save_path}")
 
 def extract_mesh(config_path):
@@ -123,4 +124,6 @@ if __name__ == "__main__":
     CONFIG_PATH = "python/config.json"
 
     train(CONFIG_PATH)
+
+    print("Extracting mesh...")
     extract_mesh(CONFIG_PATH)

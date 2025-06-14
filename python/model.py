@@ -62,3 +62,23 @@ class Siren(nn.Module):
         coords = coords.clone().detach().requires_grad_(True)
         output = self.net(coords)
         return output, coords
+    
+    def save_raw(self, path):
+        with open(path, "wb") as f:
+            #f.write("hydrann1".encode("utf-8"))
+            layers = []
+            for layer in self.net.children():
+                if isinstance(layer, nn.Linear):
+                    layers.append(layer)
+                elif isinstance(layer, SineLayer):
+                    layers.append(layer.linear)
+                    
+            f.write(len(layers).to_bytes(4, "little"))
+            for layer in layers:
+                weight = np.ascontiguousarray(layer.weight.cpu().detach().numpy(), dtype=np.float32)
+                bias = np.ascontiguousarray(layer.bias.cpu().detach().numpy(), dtype=np.float32)
+
+                f.write(weight.shape[0].to_bytes(4, "little"))
+                f.write(weight.shape[1].to_bytes(4, "little"))
+                f.write(weight.tobytes())
+                f.write(bias.tobytes())

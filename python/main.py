@@ -6,6 +6,7 @@ import json
 from dataset import *
 from model import *
 from utils import *
+from torch_utils import *
 
 import tqdm
 
@@ -22,7 +23,8 @@ def train(config_path):
         batch_size=config["batch_size"],
         model_path=config["model_path"],
         checkpoint=config.get("checkpoint", "checkpoints/sdf_data.npy"),
-        normalize=config.get("normalize", True)
+        normalize=config.get("normalize", True),
+        uniform_ratio=config["uniform_ratio"]
     )
     dataset.cuda()
 
@@ -38,8 +40,12 @@ def train(config_path):
 
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     criterion = nn.MSELoss()
+    lambda1 = lambda epoch: config["lambda_lr"] ** epoch
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda1)
 
     progressbar = tqdm.tqdm(range(config["epochs"]))
+    eikonal_weight = config["eikonal_weight"]
+    heat_weight = config["heat_weight"]
 
     for epoch in progressbar:
         dataset.shuffle()
@@ -50,13 +56,27 @@ def train(config_path):
             sdf_gt = batch["dist"].to(device)
 
             optimizer.zero_grad()
-            sdf_pred, _ = model(points)
+            sdf_pred, coords = model(points)
 
-            loss = criterion(sdf_pred, sdf_gt)
+            if eikonal_weight > 0.0 or heat_weight > 0.0:
+                grads = torch.autograd.grad(
+                    outputs=sdf_pred,
+                    inputs=coords,
+                    grad_outputs=torch.ones_like(sdf_pred),
+                    create_graph=True,
+                    retain_graph=True,
+                )[0]
+
+            eikonal_val = eikonal_weight * eikonal_loss(sdf_pred, coords, grads) if eikonal_weight > 0.0 else 0
+            heat_val = heat_weight * heat_loss(coords, sdf_pred, grads) if heat_weight > 0.0 else 0
+
+            loss = criterion(sdf_pred, sdf_gt) + eikonal_val + heat_val
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
+        
+        scheduler.step()
 
         progressbar.write(f"[Epoch {epoch+1}/{config['epochs']}] Loss: {total_loss:.6f}")
 
@@ -83,8 +103,8 @@ def extract_mesh(config_path):
     model.load_state_dict(torch.load("checkpoints/siren_weights.pth"))
     model.cuda().eval()
 
-    mesh = reconstruct_sdf(model, resolution=128)
-    mesh.export("reconstructed.obj")
+    mesh = reconstruct_sdf(model, resolution=256)
+    mesh.export(config["reconstruction_path"])
 
 if __name__ == "__main__":
     if not os.path.exists("checkpoints"):

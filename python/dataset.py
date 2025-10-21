@@ -35,16 +35,20 @@ class SDF_Dataset(Dataset):
             'dist': self.distances[index]
         }
     
-    def generate_points(self, path, n, normalize=True, uniform_ratio=0.0, uniform_bounds=(-1.2, 1.2), visualize=False):
-        # normalize=True => map points to [-1, 1]
+    def generate_points(self, path, n, normalize=True, uniform_ratio=0.0, uniform_bounds=(0.0, 1.2), visualize=False):
+        # normalize=True => map points to [0, 1]
         mesh = trimesh.load(path)
 
         if normalize:
             center = mesh.bounds.mean(axis=0)
             mesh.apply_translation(-center)
 
-            scale = 2.0 / mesh.extents.max()
+            scale = 1.0 / mesh.extents.max()
             mesh.apply_scale(scale)
+
+            mesh.apply_translation((0.5, 0.5, 0.5))
+
+            print(f"Mesh bounds: {mesh.bounds}")
 
         #mesh.export("mesh_gt.obj")
 

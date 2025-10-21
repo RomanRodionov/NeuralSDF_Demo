@@ -10,11 +10,11 @@ from torch_utils import *
 
 import tqdm
 
-def train(config_path):
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def train(config_path, model_type="SIREN"):#SIREN or FastKAN
     with open(config_path, 'r') as f:
         config = json.load(f)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print("Building dataset...")
 
@@ -28,15 +28,10 @@ def train(config_path):
     )
     dataset.cuda()
 
-    model = Siren(
-        in_features=3,
-        hidden_features=config["hidden_features"],
-        hidden_layers=config["hidden_layers"],
-        out_features=1,
-        outermost_linear=True,
-        first_omega_0=config.get("first_omega_0", 30),
-        hidden_omega_0=config.get("hidden_omega_0", 30)
-    ).to(device)
+    model = get_model(config, model_type).to(device)
+
+    params_count = total_parameters(model.net)
+    print(f"Model has {params_count} parameters")
 
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"])
     criterion = nn.MSELoss()
@@ -54,6 +49,7 @@ def train(config_path):
             batch = dataset.get_batch(i)
             points = batch["points"].to(device)
             sdf_gt = batch["dist"].to(device)
+            #print(torch.max(points), torch.min(points))
 
             optimizer.zero_grad()
             sdf_pred, coords = model(points)
@@ -85,21 +81,13 @@ def train(config_path):
     model.save_raw(config.get("raw_weights_path", "checkpoints/raw_weights.bin"))
     print(f"Model saved to {save_path}")
 
-def extract_mesh(config_path):
+def extract_mesh(config_path, model_type="SIREN"):
     with open(config_path, 'r') as f:
         config = json.load(f)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model = Siren(
-        in_features=3,
-        hidden_features=config["hidden_features"],
-        hidden_layers=config["hidden_layers"],
-        out_features=1,
-        outermost_linear=True,
-        first_omega_0=config.get("first_omega_0", 30),
-        hidden_omega_0=config.get("hidden_omega_0", 30)
-    ).to(device)
+    model = get_model(config, model_type).to(device)
 
     model.load_state_dict(torch.load("checkpoints/siren_weights.pth"))
     model.cuda().eval()
@@ -120,10 +108,10 @@ if __name__ == "__main__":
 
     train(args.config)
     """
-
+    MODEL_TYPE = "SIREN"#"FastKAN"#"NGLoD"# 
     CONFIG_PATH = "python/config.json"
 
-    train(CONFIG_PATH)
+    train(CONFIG_PATH, MODEL_TYPE)
 
     print("Extracting mesh...")
-    extract_mesh(CONFIG_PATH)
+    extract_mesh(CONFIG_PATH, MODEL_TYPE)

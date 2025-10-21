@@ -3,6 +3,9 @@ import trimesh
 from skimage import measure
 import os
 
+def total_parameters(model: torch.nn.Module):
+    return sum(p.numel() for p in model.parameters())
+
 def save_model(model, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save(model.state_dict(), path)
@@ -10,7 +13,7 @@ def save_model(model, path):
 def reconstruct_sdf(model, resolution=128, bound=1.0, device='cuda'):
     # reconstructs mesh in [-bound, bound]
 
-    lin = torch.linspace(-bound, bound, resolution)
+    lin = torch.linspace(0, bound, resolution)
     grid_x, grid_y, grid_z = torch.meshgrid(lin, lin, lin, indexing='ij')
     coords = torch.stack([grid_x, grid_y, grid_z], dim=-1).reshape(-1, 3).to(device)
 

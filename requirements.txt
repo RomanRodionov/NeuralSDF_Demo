@@ -7,3 +7,4 @@ scipy
 mesh-to-sdf
 matplotlib
 scikit-image
+open3d

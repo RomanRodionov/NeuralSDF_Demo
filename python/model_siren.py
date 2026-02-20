@@ -66,9 +66,11 @@ class SineLayer(nn.Module):
     def forward(self, input):
         return torch.sin(self.omega_0 * self.linear(input))
     
-    
+
 class Siren(nn.Module):
-    def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
+    def __init__(self, 
+                 in_features=3, hidden_features=256, 
+                 hidden_layers=3, out_features=1, outermost_linear=True, 
                  first_omega_0=30, hidden_omega_0=30.):
         super().__init__()
         
@@ -96,7 +98,7 @@ class Siren(nn.Module):
     
     def forward(self, coords):
         coords = coords.clone().detach().requires_grad_(True)
-        output = self.net(coords)
+        output = self.net(coords - 1)
         return output, coords
     
     def save_raw(self, path):
@@ -118,6 +120,81 @@ class Siren(nn.Module):
                 f.write(weight.shape[1].to_bytes(4, "little"))
                 f.write(weight.tobytes())
                 f.write(bias.tobytes())
+        
+    def load_raw(self, path, device=None):
+        """
+        Load weights from a raw file and move them to the specified device.
+        
+        Args:
+            path (str): Path to the raw weights file.
+            device (str or torch.device, optional): Target device for the model.
+                If None, uses the device of the first parameter (or CPU if none).
+        """
+        with open(path, "rb") as f:
+            # Read number of layers
+            num_layers_bytes = f.read(4)
+            if len(num_layers_bytes) < 4:
+                raise ValueError("File too short: missing layer count")
+            num_layers = int.from_bytes(num_layers_bytes, "little")
+
+            # Extract current model's linear layers in the same order as save_raw
+            current_layers = []
+            for layer in self.net.children():
+                if isinstance(layer, nn.Linear):
+                    current_layers.append(layer)
+                elif isinstance(layer, SineLayer):
+                    current_layers.append(layer.linear)
+
+            if len(current_layers) != num_layers:
+                raise ValueError(f"Model has {len(current_layers)} linear layers, but file has {num_layers}")
+
+            # Determine target device
+            if device is None:
+                # Use the device of the first parameter if available, else CPU
+                params = list(self.parameters())
+                device = params[0].device if params else torch.device('cpu')
+            else:
+                device = torch.device(device)
+
+            # Move entire model to target device before loading (optional but safe)
+            self.to(device)
+
+            for i, layer in enumerate(current_layers):
+                # Read dimensions
+                out_dim_bytes = f.read(4)
+                in_dim_bytes = f.read(4)
+                if len(out_dim_bytes) < 4 or len(in_dim_bytes) < 4:
+                    raise ValueError(f"File too short: missing dimensions for layer {i}")
+                out_dim = int.from_bytes(out_dim_bytes, "little")
+                in_dim = int.from_bytes(in_dim_bytes, "little")
+
+                # Read weight data
+                weight_size = out_dim * in_dim * 4  # float32 = 4 bytes
+                weight_bytes = f.read(weight_size)
+                if len(weight_bytes) < weight_size:
+                    raise ValueError(f"File too short: missing weight data for layer {i}")
+                weight_np = np.frombuffer(weight_bytes, dtype=np.float32).reshape(out_dim, in_dim)
+                weight_tensor = torch.from_numpy(weight_np)
+
+                # Read bias data
+                bias_size = out_dim * 4
+                bias_bytes = f.read(bias_size)
+                if len(bias_bytes) < bias_size:
+                    raise ValueError(f"File too short: missing bias data for layer {i}")
+                bias_np = np.frombuffer(bias_bytes, dtype=np.float32).reshape(out_dim)
+                bias_tensor = torch.from_numpy(bias_np)
+
+                # Check shape compatibility
+                if layer.weight.shape != weight_tensor.shape:
+                    raise ValueError(f"Layer {i} weight shape mismatch: expected {layer.weight.shape}, got {weight_tensor.shape}")
+                if layer.bias.shape != bias_tensor.shape:
+                    raise ValueError(f"Layer {i} bias shape mismatch: expected {layer.bias.shape}, got {bias_tensor.shape}")
+
+                # Assign weights (tensors are moved to the layer's device automatically via .to())
+                layer.weight.data = weight_tensor.to(layer.weight.device)
+                layer.bias.data = bias_tensor.to(layer.bias.device)
+
+        print(f"Successfully loaded weights from {path} to device {device}")
 
 class MLP(nn.Module):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, encoding=None):

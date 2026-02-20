@@ -21,9 +21,11 @@ def reconstruct_sdf(model, resolution=128, bound=1.0, device='cuda'):
     batch_size = 65536
     with torch.no_grad():
         for i in range(0, coords.shape[0], batch_size):
-            pred, _ = model(coords[i:i+batch_size])
+            coords_ = coords[i:i+batch_size] * 2
+            pred, _ = model(coords_)
             sdf_values.append(pred.squeeze(-1).cpu())
     
+
     sdf_values = torch.cat(sdf_values, dim=0).numpy()
     sdf_grid = sdf_values.reshape(resolution, resolution, resolution)
 
